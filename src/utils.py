@@ -18,8 +18,16 @@ def load_data(filepath):
     Returns:
         DataFrame with market data
     """
-    # TODO: Implement data loading
-    pass
+    df = pd.read_csv(filepath)
+
+    # If a date column exists, parse and sort for time-series consistency
+    for col in df.columns:
+        if "date" in col.lower():
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+            df = df.sort_values(col)
+            break
+
+    return df.reset_index(drop=True)
 
 
 def normalize_data(data):
@@ -32,8 +40,18 @@ def normalize_data(data):
     Returns:
         Normalized data
     """
-    # TODO: Implement normalization
-    pass
+    df = data.copy()
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+
+    # Z-score normalization; avoid division by zero
+    for col in numeric_cols:
+        std = df[col].std()
+        if std == 0 or pd.isna(std):
+            df[col] = 0.0
+        else:
+            df[col] = (df[col] - df[col].mean()) / std
+
+    return df
 
 
 def calculate_returns(prices):
