@@ -3,6 +3,8 @@ Environment module for trading simulation.
 This module defines the trading environment for Q-learning.
 """
 
+import numpy as np
+
 
 class TradingEnvironment:
     """
@@ -40,10 +42,22 @@ class TradingEnvironment:
         Get current state observation.
         
         Returns:
-            State vector
+            State vector as a 1D numpy array containing:
+            [balance, position, portfolio_value, <market features>]
         """
-        # TODO: Implement state representation
-        pass
+        # Extract current market features (numeric columns only)
+        row = self.data.iloc[self.current_step]
+        market_features = row.select_dtypes(include=[np.number]).to_numpy()
+
+        # Combine account status with market features
+        state = np.concatenate(
+            [
+                np.array([self.balance, self.position, self.portfolio_value], dtype=float),
+                market_features.astype(float),
+            ]
+        )
+
+        return state
     
     def step(self, action):
         """
@@ -64,4 +78,4 @@ class TradingEnvironment:
         """
         # TODO: Implement visualization
         pass
-
+    
