@@ -246,3 +246,161 @@ def calculate_performance_difference(portfolio_values, index_prices, window=30):
     # Convert to percentage points
     performance_diff = (portfolio_returns - index_returns) * 100
     return performance_diff
+
+
+# State Discretization Functions
+
+def discretize_cash_percentage(cash_percentage):
+    """
+    Discretize cash percentage to state value (0, 1, or 2).
+    
+    According to QLearningStructure.md:
+    - [0] Invested: < 10% cash in portfolio
+    - [1] Balanced: 10 - 50% cash in portfolio (inclusive)
+    - [2] Capital: > 50% cash in portfolio
+    
+    Args:
+        cash_percentage: Cash percentage (0-100)
+        
+    Returns:
+        Discrete state value: 0, 1, or 2
+    """
+    if cash_percentage < 10:
+        return 0  # Invested
+    elif cash_percentage <= 50:
+        return 1  # Balanced
+    else:
+        return 2  # Capital
+
+
+def discretize_trend(trend_percentage):
+    """
+    Discretize trend indicator to state value (0, 1, or 2).
+    
+    According to QLearningStructure.md:
+    - [0] Bearish: < -2%
+    - [1] Neutral: in the range ±2% (inclusive)
+    - [2] Bullish: > +2%
+    
+    Args:
+        trend_percentage: Trend percentage from calculate_trend_indicator()
+                          (Current Price - SMA_50) / Current Price * 100
+        
+    Returns:
+        Discrete state value: 0, 1, or 2
+    """
+    if trend_percentage < -2:
+        return 0  # Bearish
+    elif trend_percentage <= 2:
+        return 1  # Neutral
+    else:
+        return 2  # Bullish
+
+
+def discretize_volatility(relative_vol):
+    """
+    Discretize relative volatility to state value (0 or 1).
+    
+    According to QLearningStructure.md:
+    - [0] Normal: σ_30d ≤ σ_365d
+    - [1] High Risk: σ_30d > σ_365d
+    
+    Args:
+        relative_vol: Relative volatility ratio (σ_30d / σ_365d)
+                      from calculate_relative_volatility()
+        
+    Returns:
+        Discrete state value: 0 or 1
+    """
+    if relative_vol <= 1.0:
+        return 0  # Normal
+    else:
+        return 1  # High Risk
+
+
+def discretize_performance(performance_diff):
+    """
+    Discretize portfolio performance to state value (0, 1, or 2).
+    
+    According to QLearningStructure.md:
+    - [0] Underperforming: R_portfolio < R_index (difference < -0.5)
+    - [1] Neutral: R_portfolio ≈ R_index (difference in range ±0.5)
+    - [2] Overperforming: R_portfolio > R_index (difference > +0.5)
+    
+    Note: The spec says "R_portfolio < R_index (±0.5)" for neutral,
+    which we interpret as |difference| ≤ 0.5
+    
+    Args:
+        performance_diff: Performance difference in percentage points
+                         from calculate_performance_difference()
+        
+    Returns:
+        Discrete state value: 0, 1, or 2
+    """
+    if performance_diff < -0.5:
+        return 0  # Underperforming
+    elif performance_diff <= 0.5:
+        return 1  # Neutral
+    else:
+        return 2  # Overperforming
+
+
+def state_tuple_to_index(cash_state, trend_state, vol_state, perf_state):
+    """
+    Convert discrete state tuple to a single integer index for Q-table lookup.
+    
+    State dimensions:
+    - Cash: 3 values (0, 1, 2)
+    - Trend: 3 values (0, 1, 2)
+    - Volatility: 2 values (0, 1)
+    - Performance: 3 values (0, 1, 2)
+    
+    Total states = 3 × 3 × 2 × 3 = 54 states
+    
+    Args:
+        cash_state: Cash state (0, 1, or 2)
+        trend_state: Trend state (0, 1, or 2)
+        vol_state: Volatility state (0 or 1)
+        perf_state: Performance state (0, 1, or 2)
+        
+    Returns:
+        Integer index from 0 to 53 for Q-table lookup
+    """
+    # Validate inputs
+    if not (0 <= cash_state <= 2):
+        raise ValueError(f"cash_state must be 0, 1, or 2, got {cash_state}")
+    if not (0 <= trend_state <= 2):
+        raise ValueError(f"trend_state must be 0, 1, or 2, got {trend_state}")
+    if not (0 <= vol_state <= 1):
+        raise ValueError(f"vol_state must be 0 or 1, got {vol_state}")
+    if not (0 <= perf_state <= 2):
+        raise ValueError(f"perf_state must be 0, 1, or 2, got {perf_state}")
+    
+    # Convert to index: cash * 18 + trend * 6 + vol * 3 + perf
+    # Where: 18 = 3*2*3, 6 = 2*3, 3 = 3
+    index = cash_state * 18 + trend_state * 6 + vol_state * 3 + perf_state
+    
+    return int(index)
+
+
+def index_to_state_tuple(index):
+    """
+    Convert Q-table index back to discrete state tuple.
+    
+    Inverse function of state_tuple_to_index().
+    
+    Args:
+        index: Integer index from 0 to 53
+        
+    Returns:
+        Tuple (cash_state, trend_state, vol_state, perf_state)
+    """
+    if not (0 <= index < 54):
+        raise ValueError(f"index must be between 0 and 53, got {index}")
+    
+    perf_state = index % 3
+    vol_state = (index // 3) % 2
+    trend_state = (index // 6) % 3
+    cash_state = index // 18
+    
+    return (cash_state, trend_state, vol_state, perf_state)
