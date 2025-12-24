@@ -47,7 +47,7 @@ def download_data(tickers):
 
     data = yf.download(
         tickers, 
-        start="2000-01-01",  
+        start="1998-01-01",  
         group_by='ticker',  
         auto_adjust=True,  
         threads=True
@@ -68,13 +68,20 @@ def clean_data(data):
     data.columns.name = None
     
     
-    data = data.drop(columns=['Adj Close'], errors='ignore')
+    data = data.drop(columns=['Adj Close', 'Open', 'High', 'Low'], errors='ignore')
     data = data.dropna(subset=['Close'])
 
     data = data.reset_index()
+
+    data = data.sort_values(by=['Ticker', 'Date'])
+    
+    # This is for top movers
+    data['perf_30d'] = data.groupby('Ticker')['Close'].pct_change(periods=30)
+
     data = data.set_index('Date') 
     
     print(data.head())
+    print(data.tail())
 
     data.to_parquet("prices_SP500_2000_23122025.parquet")
     
