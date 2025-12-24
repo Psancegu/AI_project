@@ -11,6 +11,9 @@ Each value indicates:
     - [1] Balanced: 10 - 50% cash in portfolio
     - [2] Capital: > 50% cash in portfolio
 
+
+**Probably going to change trend to volatility indexes because it matters more and has a greater impact**
+
 - Trend $ \rightarrow $ (0,1,2) $ \rightarrow $ Actual Price - SMA[1] 50d 
     - [0] Bearish: $ < -2 $%
     - [1] Neutral: $ \text{ in the range }\pm 2 $%
