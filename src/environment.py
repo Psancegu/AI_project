@@ -61,6 +61,10 @@ class TradingEnvironment:
     
     def step(self, action):
         """
+
+        funció a revisar: el reward ignora la comisió de la operació, la comisió es del 0.1% de la operació.
+        no hi ha noció de quants stocks es poden comprar o vendre, es pot comprar o vendre tantes com es vulgui.
+        a més, s'ignora la posicio tamany/ capital, multiplica el canvi de preu per la posicio per obtenir el reward.
         Execute an action in the environment.
         
         Args:
