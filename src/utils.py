@@ -404,3 +404,158 @@ def index_to_state_tuple(index):
     cash_state = index // 18
     
     return (cash_state, trend_state, vol_state, perf_state)
+
+
+# Portfolio Management Functions
+
+
+def calculate_stock_returns(data, current_step, lookback_window=30):
+    """
+    Calculate returns for each stock over a lookback window.
+    
+    Args:
+        data: DataFrame with Date index and Ticker column
+        current_step: Current time step index
+        lookback_window: Number of days to look back (default: 30)
+        
+    Returns:
+        Series with ticker as index and returns as values
+    """
+    if current_step < lookback_window:
+        return pd.Series(dtype=float)  # Not enough data
+    
+    # Get data for the lookback period
+    start_idx = max(0, current_step - lookback_window)
+    end_idx = current_step + 1
+    
+    period_data = data.iloc[start_idx:end_idx]
+    
+    # Group by ticker and calculate returns
+    returns_dict = {}
+    for ticker in period_data['Ticker'].unique():
+        ticker_data = period_data[period_data['Ticker'] == ticker]
+        if len(ticker_data) < 2:
+            continue
+        
+        # Get first and last close price
+        prices = ticker_data['Close'].values
+        if len(prices) >= 2:
+            return_pct = (prices[-1] - prices[0]) / prices[0]
+            returns_dict[ticker] = return_pct
+    
+    return pd.Series(returns_dict)
+
+
+def get_top_performing_stocks(data, current_step, top_n=5, lookback_window=30):
+    """
+    Get the top N performing stocks over a lookback window.
+    
+    Buy Policy: Buy the Top 5 performing stocks split equally.
+    
+    Args:
+        data: DataFrame with Date index and Ticker column
+        current_step: Current time step index
+        top_n: Number of top stocks to return (default: 5)
+        lookback_window: Number of days to look back (default: 30)
+        
+    Returns:
+        List of ticker symbols (top performers)
+    """
+    returns = calculate_stock_returns(data, current_step, lookback_window)
+    
+    if len(returns) == 0:
+        return []
+    
+    # Sort by returns (descending) and get top N
+    top_stocks = returns.nlargest(top_n).index.tolist()
+    
+    return top_stocks
+
+
+def get_worst_performing_stock(data, current_step, holdings, lookback_window=30):
+    """
+    Get the worst performing stock from current holdings.
+    
+    Sell Policy: Sell the worst performing stock until we reach the cap.
+    
+    Args:
+        data: DataFrame with Date index and Ticker column
+        current_step: Current time step index
+        holdings: Dictionary of current holdings {ticker: shares}
+        lookback_window: Number of days to look back (default: 30)
+        
+    Returns:
+        Ticker symbol of worst performing stock, or None if no holdings
+    """
+    if len(holdings) == 0:
+        return None
+    
+    returns = calculate_stock_returns(data, current_step, lookback_window)
+    
+    # Filter to only stocks we own
+    owned_returns = returns[returns.index.isin(holdings.keys())]
+    
+    if len(owned_returns) == 0:
+        # If we can't calculate returns, return first stock
+        return list(holdings.keys())[0]
+    
+    # Return worst performer (lowest return)
+    worst_stock = owned_returns.idxmin()
+    
+    return worst_stock
+
+
+def calculate_portfolio_value(holdings, cash, data, current_step):
+    """
+    Calculate total portfolio value (cash + stock holdings).
+    
+    Args:
+        holdings: Dictionary {ticker: shares}
+        cash: Current cash balance
+        data: DataFrame with Date index and Ticker column
+        current_step: Current time step index
+        
+    Returns:
+        Total portfolio value
+    """
+    stock_value = 0.0
+    
+    # Get the date at current_step
+    current_date = data.index[current_step]
+    
+    # Get all rows for this date
+    date_data = data.loc[current_date]
+    
+    # Handle both Series and DataFrame cases
+    if isinstance(date_data, pd.Series):
+        # Single row for this date
+        ticker = date_data.get('Ticker')
+        if ticker in holdings:
+            price = date_data.get('Close', 0)
+            stock_value += holdings[ticker] * price
+    else:
+        # Multiple rows (one per ticker)
+        for ticker, shares in holdings.items():
+            ticker_data = date_data[date_data['Ticker'] == ticker]
+            if len(ticker_data) > 0:
+                price = ticker_data['Close'].iloc[0]
+                stock_value += shares * price
+    
+    return cash + stock_value
+
+
+def calculate_cash_percentage(cash, portfolio_value):
+    """
+    Calculate cash as percentage of total portfolio value.
+    
+    Args:
+        cash: Current cash balance
+        portfolio_value: Total portfolio value
+        
+    Returns:
+        Cash percentage (0-100)
+    """
+    if portfolio_value == 0:
+        return 100.0  # All cash if portfolio is empty
+    
+    return (cash / portfolio_value) * 100.0
