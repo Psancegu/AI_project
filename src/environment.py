@@ -73,24 +73,22 @@ class TradingEnvironment:
         # Get the date at current_step
         current_date = self.data.index[self.current_step]
         
-        # Filter data for this specific date
+        # Filter data for this specific date - always get as DataFrame
         date_data = self.data.loc[current_date]
         
         prices = {}
         
-        # Handle both Series and DataFrame cases
+        # Convert to DataFrame if it's a Series
         if isinstance(date_data, pd.Series):
-            # Single row for this date
-            ticker = date_data.get('Ticker')
-            if ticker:
-                prices[ticker] = date_data.get('Close', 0)
-        else:
-            # Multiple rows for this date (one per ticker)
-            # Iterate through rows directly
-            for idx, row in date_data.iterrows():
-                ticker = row.get('Ticker')
-                if ticker:
-                    prices[ticker] = row.get('Close', 0)
+            # Single row - convert to DataFrame for consistent handling
+            date_data = date_data.to_frame().T
+        
+        # Now date_data is always a DataFrame
+        if 'Ticker' in date_data.columns and 'Close' in date_data.columns:
+            for _, row in date_data.iterrows():
+                ticker = row['Ticker']
+                close_price = row['Close']
+                prices[ticker] = close_price
         
         return prices
     
