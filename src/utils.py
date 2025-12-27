@@ -428,22 +428,45 @@ def calculate_stock_returns(data, current_step, lookback_window=30):
     start_idx = max(0, current_step - lookback_window)
     end_idx = current_step + 1
     
-    period_data = data.iloc[start_idx:end_idx]
+    period_data = data.iloc[start_idx:end_idx].copy()
     
     # Group by ticker and calculate returns
     returns_dict = {}
-    for ticker in period_data['Ticker'].unique():
-        ticker_data = period_data[period_data['Ticker'] == ticker]
+    
+    # Get unique tickers
+    if 'Ticker' not in period_data.columns:
+        return pd.Series(dtype=float)
+    
+    unique_tickers = period_data['Ticker'].unique()
+    
+    for ticker in unique_tickers:
+        # Use query or direct filtering - more robust
+        try:
+            # Filter using query method (more efficient)
+            ticker_data = period_data.query(f"Ticker == '{ticker}'")
+        except Exception:
+            # Fallback: iterate through rows
+            ticker_data = period_data[period_data['Ticker'].astype(str) == str(ticker)]
+        
         if len(ticker_data) < 2:
             continue
         
+        # Sort by date to ensure chronological order
+        ticker_data = ticker_data.sort_index()
+        
         # Get first and last close price
         prices = ticker_data['Close'].values
-        if len(prices) >= 2:
-            return_pct = (prices[-1] - prices[0]) / prices[0]
-            returns_dict[ticker] = return_pct
+        if len(prices) >= 2 and prices[0] > 0:  # Avoid division by zero
+            return_pct = float((prices[-1] - prices[0]) / prices[0])
+            if not np.isnan(return_pct) and not np.isinf(return_pct):
+                returns_dict[ticker] = return_pct
     
-    return pd.Series(returns_dict)
+    # Return Series with explicit dtype and handle empty case
+    if len(returns_dict) == 0:
+        return pd.Series(dtype=float)
+    
+    # Create Series explicitly with index and values
+    return pd.Series(list(returns_dict.values()), index=list(returns_dict.keys()), dtype=float)
 
 
 def get_top_performing_stocks(data, current_step, top_n=5, lookback_window=30):
@@ -526,20 +549,23 @@ def calculate_portfolio_value(holdings, cash, data, current_step):
     # Get all rows for this date
     date_data = data.loc[current_date]
     
-    # Handle both Series and DataFrame cases
+    # Convert to DataFrame if it's a Series for consistent handling
     if isinstance(date_data, pd.Series):
-        # Single row for this date
-        ticker = date_data.get('Ticker')
-        if ticker in holdings:
-            price = date_data.get('Close', 0)
-            stock_value += holdings[ticker] * price
-    else:
-        # Multiple rows (one per ticker)
+        date_data = date_data.to_frame().T
+    
+    # Now date_data is always a DataFrame
+    if 'Ticker' in date_data.columns and 'Close' in date_data.columns:
+        # Create a price lookup dictionary
+        price_dict = {}
+        for _, row in date_data.iterrows():
+            ticker = row['Ticker']
+            price = row['Close']
+            price_dict[ticker] = price
+        
+        # Calculate stock value from holdings
         for ticker, shares in holdings.items():
-            ticker_data = date_data[date_data['Ticker'] == ticker]
-            if len(ticker_data) > 0:
-                price = ticker_data['Close'].iloc[0]
-                stock_value += shares * price
+            if ticker in price_dict:
+                stock_value += shares * price_dict[ticker]
     
     return cash + stock_value
 
@@ -559,3 +585,93 @@ def calculate_cash_percentage(cash, portfolio_value):
         return 100.0  # All cash if portfolio is empty
     
     return (cash / portfolio_value) * 100.0
+
+
+# Data Split Functions
+
+def split_data_by_date(data, train_start='2000-01-01', train_end='2021-12-31', 
+                       test_start='2022-01-01', date_column=None):
+    """
+    Split data into training and test sets based on dates.
+    
+    According to QLearningStructure.md:
+    - Training data: January 1st 2000 to December 31st 2021
+    - Test data: January 1st 2022 onwards
+    
+    Args:
+        data: DataFrame with Date index or date column
+        train_start: Start date for training data (default: '2000-01-01')
+        train_end: End date for training data (default: '2021-12-31')
+        test_start: Start date for test data (default: '2022-01-01')
+        date_column: Name of date column if Date is not the index (optional)
+        
+    Returns:
+        Tuple (train_data, test_data)
+        - train_data: DataFrame with training period data
+        - test_data: DataFrame with test period data
+    """
+    df = data.copy()
+    
+    # Convert date parameters to datetime
+    train_start = pd.to_datetime(train_start)
+    train_end = pd.to_datetime(train_end)
+    test_start = pd.to_datetime(test_start)
+    
+    # Handle date column or index
+    if date_column is not None:
+        # If date_column is specified, use it and set as index
+        if date_column in df.columns:
+            df[date_column] = pd.to_datetime(df[date_column], errors='coerce')
+            df = df.set_index(date_column)
+        else:
+            raise ValueError(f"Date column '{date_column}' not found in data")
+    elif not isinstance(df.index, pd.DatetimeIndex):
+        # Try to convert index to datetime if it's not already
+        try:
+            df.index = pd.to_datetime(df.index, errors='coerce')
+        except Exception:
+            raise ValueError("Data must have a Date index or specify date_column parameter")
+    
+    # Sort by date to ensure chronological order
+    df = df.sort_index()
+    
+    # Split into training and test sets
+    # Training: from train_start to train_end (inclusive)
+    train_mask = (df.index >= train_start) & (df.index <= train_end)
+    train_data = df.loc[train_mask].copy()
+    
+    # Test: from test_start onwards
+    test_mask = df.index >= test_start
+    test_data = df.loc[test_mask].copy()
+    
+    # Print summary
+    print(f"Data split summary:")
+    print(f"  Total data points: {len(df)}")
+    print(f"  Training period: {train_start.date()} to {train_end.date()}")
+    print(f"  Training data points: {len(train_data)}")
+    print(f"  Test period: {test_start.date()} onwards")
+    print(f"  Test data points: {len(test_data)}")
+    
+    if len(train_data) == 0:
+        print(f"  WARNING: No training data found in specified period!")
+    if len(test_data) == 0:
+        print(f"  WARNING: No test data found in specified period!")
+    
+    return train_data, test_data
+
+
+def split_data(data, train_start='2000-01-01', train_end='2021-12-31', 
+               test_start='2022-01-01'):
+    """
+    Convenience function to split data with default dates from QLearningStructure.md.
+    
+    Args:
+        data: DataFrame with Date index
+        train_start: Start date for training (default: '2000-01-01')
+        train_end: End date for training (default: '2021-12-31')
+        test_start: Start date for test (default: '2022-01-01')
+        
+    Returns:
+        Tuple (train_data, test_data)
+    """
+    return split_data_by_date(data, train_start, train_end, test_start)
