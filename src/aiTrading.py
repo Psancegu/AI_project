@@ -24,10 +24,7 @@ class AiTrading():
         The Q-Learning table with shape (54, 5) storing Q-values for each state-action pair.
         
     state : tuple
-        The current state of the environment (Cash, Trend, Volatility, Alpha).
-        
-    dataset : pandas.DataFrame
-        Dataframe containing the historical price data (S&P 500) from the parquet file.
+        The current state of the environment (Trend, Volatility, Performance, etc.).
         
     cash : float
         The amount of cash currently available in the portfolio.
@@ -35,29 +32,42 @@ class AiTrading():
     net_worth : float
         The total value of the portfolio (Cash + Current Value of Holdings).
         
-    portfolio_performance_30d : float
-        The percentage return of the portfolio over the last 30 days.
+    start_date : str
+        The start date of the simulation (e.g., "2000-01-01").
         
-    index_performance_30d : float
-        The percentage return of the index (S&P 500) over the last 30 days.
+    current_date : pandas.Timestamp
+        The specific date corresponding to the current step in the simulation.
         
-    std_dev_30d : float
-        The standard deviation of index returns over the last 30 days.
+    dataset : pandas.DataFrame
+        Dataframe containing the raw historical price data from the parquet file.
         
-    std_Dev_365d : float
-        The standard deviation of index returns over the last 365 days.
+    index_dataset : pandas.DataFrame
+        Dataframe containing the pre-processed S&P 500 index data with calculated indicators.
+
+    current_step : int
+        The current time step (index) of the simulation.
         
-    sma_50d : float
-        The 50-day Simple Moving Average of the index price (Trend indicator).
-        
-    index_price : float
-        The current closing price of the index at the current time step.
+    max_steps : int
+        The total number of steps available in the simulation data.
+
+    dates_index_array : numpy.ndarray
+        Optimized array containing the dates for the simulation period.
+
+    price_array : numpy.ndarray
+        Optimized array containing the 'Close' prices of the index.
+
+    sma_array : numpy.ndarray
+        Optimized array containing the 50-day Simple Moving Average values.
+
+    std_30d_array : numpy.ndarray
+        Optimized array containing the 30-day rolling standard deviation (volatility).
+
+    perf_30d_array : numpy.ndarray
+        Optimized array containing the 30-day percentage performance of the index.
 
 
     Methods:
     --------
-
-
 
     """
 
