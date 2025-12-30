@@ -82,7 +82,6 @@ def download_data(tickers):
     perf_df.columns = pd.MultiIndex.from_product([perf_df.columns, ['perf_30d']])
     data = pd.concat([data, perf_df], axis=1).sort_index(axis=1)
 
-    
     # Filtering by date 
     downloaded_tickers = data.columns.get_level_values(0).unique()
 
@@ -95,6 +94,8 @@ def download_data(tickers):
             data.loc[mask_invalid, (ticker, slice(None))] = np.nan
     
     data = data.dropna(axis=1, how='all')
+
+    
     
     return data
                 
@@ -116,6 +117,8 @@ def clean_data(data):
     data = data.dropna(subset=['Close'])
 
     data = data.reset_index()
+
+    data['rank_30d'] = data.groupby('Date')['perf_30d'].rank(ascending=False, method='first')
 
     data = data.sort_values(by=['Ticker', 'Date'])
 
