@@ -372,9 +372,9 @@ class AiTrading():
         return top_5_data[['Ticker', 'Close', 'perf_30d', 'rank_30d']]
 
         
-
-    def calculate_reward(self, prev_net_worth, trade_executed):
-        """
+    """
+        def calculate_reward(self, prev_net_worth, trade_executed):
+        "
         Calculates the reward for the current step based on the defined reward function.
 
         Formula components:
@@ -392,7 +392,7 @@ class AiTrading():
 
         Returns:
             float: The calculated reward value.
-        """
+
         current_net_worth = self.net_worth
         
         if prev_net_worth == 0: 
@@ -419,7 +419,35 @@ class AiTrading():
             reward += 0
             
         return reward
-    
+    """
+    def calculate_reward(self, prev_net_worth, trade_executed):
+        # 1. Calcular Retorno del Portfolio
+        current_net_worth = self.net_worth
+        if prev_net_worth == 0: 
+            r_portfolio = 0
+        else:
+            r_portfolio = (current_net_worth - prev_net_worth) / prev_net_worth
+        
+        # 2. Calcular Retorno del Mercado (Benchmark) hoy
+        # Usamos la columna que ya calculaste en preprocess: 'daily_moving_relative'
+        # Nota: Asegúrate de que daily_moving_relative es el cambio porcentual diario del ^GSPC
+        r_benchmark = self.index_dataset.loc[self.current_date, 'daily_moving_relative']
+        
+        # 3. EL CAMBIO CLAVE: Alpha (Exceso de retorno)
+        # Si el mercado hace +1% y tú +1.5%, alpha es +0.5% (Premio)
+        # Si el mercado hace -2% y tú -1%, alpha es +1% (Premio por perder menos)
+        alpha = r_portfolio - r_benchmark
+        
+        # Multiplicamos por 100 para que los números no sean tan pequeños (0.001 -> 0.1)
+        reward = alpha * 100 
+        
+        # Penalización por comisión (Fricción)
+        if trade_executed:
+            reward -= 0.05
+            
+        return reward
+
+
 
     def get_current_portfolio_value(self):
         """
@@ -496,9 +524,9 @@ class AiTrading():
             self.portfolio_history.append(self.net_worth)
             
 
-            if self.net_worth < 50:
+            if self.net_worth < 1000:
                 done = True
-                return self.state, -10, done 
+                return self.state, 0, done 
 
             reward = self.calculate_reward(prev_net_worth, trade_executed)
             
@@ -564,7 +592,7 @@ class AiTrading():
         return self.portfolio_history
     
 
-    def train_multi_episode(self, episodes=10):
+    def train_multi_episode(self, episodes=100):
         """
         Executes training over multiple episodes (2000-2021).
         Epsilon decays after each episode.
@@ -581,7 +609,7 @@ class AiTrading():
         DISCOUNT = 0.95
         
         EPSILON = 1.0           
-        EPSILON_DECAY = 0.995
+        EPSILON_DECAY = 0.96
         MIN_EPSILON = 0.05
 
         all_final_net_worths = []
@@ -640,7 +668,7 @@ class AiTrading():
             print(f"Error: File '{filename}' not found.")
             return []
 
-        test_start_date = pd.Timestamp("2022-01-01")
+        test_start_date = pd.Timestamp("2022-01-1")
 
         start_step_index = self.index_dataset.index.searchsorted(test_start_date)
 
@@ -714,9 +742,9 @@ class AiTrading():
 
 if __name__ == "__main__":    
     env = AiTrading()
-    
+
     print("\nTraining Phase (2000-2021) - Multi Episode")
-    training_results = env.train_multi_episode(episodes=10)
+    training_results = env.train_multi_episode(episodes=100)
     
     q_table_filename = "q_table_trading.parquet"
     df_qtable = pd.DataFrame(env.qtable, columns=[str(i) for i in range(env.qtable.shape[1])])
@@ -734,8 +762,11 @@ if __name__ == "__main__":
 
     print("\nTesting Phase (2022-Present)")
     
+    q_table_filename = "q_table_trading.parquet"
     test_curve = env.test(q_table_filename)
     
+    print(env.qtable)
+
     if test_curve:
         plt.figure(figsize=(12, 6))
         
