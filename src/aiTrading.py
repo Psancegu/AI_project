@@ -10,7 +10,7 @@ Created on Wed Dec 24 09:30:00 2025
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-
+from tqdm import trange
 
 class AiTrading():
     """
@@ -94,7 +94,7 @@ class AiTrading():
         print(self.index_dataset)
 
     
-
+        self.max_steps = len(self.index_dataset) - 1
 
 
     def reset(self):
@@ -562,6 +562,70 @@ class AiTrading():
         print("Training Ended")
         print(self.qtable)
         return self.portfolio_history
+    
+
+    def train_multi_episode(self, episodes=10):
+        """
+        Executes training over multiple episodes (2000-2021).
+        Epsilon decays after each episode.
+        """
+        train_end_date = pd.Timestamp("2021-12-31")
+        train_data = self.index_dataset[self.index_dataset.index <= train_end_date]
+        
+        original_max_steps = self.max_steps
+        self.max_steps = len(train_data) - 1
+        
+        print(f"Starting Training...")
+
+        LEARNING_RATE = 0.1
+        DISCOUNT = 0.95
+        
+        EPSILON = 1.0           
+        EPSILON_DECAY = 0.995
+        MIN_EPSILON = 0.05
+
+        all_final_net_worths = []
+
+        for episode in trange(episodes):
+            
+            state_tuple = self.reset()
+            state_idx = self.get_state_index(state_tuple)
+            
+            done = False
+            
+            while not done:
+                if np.random.random() > EPSILON:
+                    action = np.argmax(self.qtable[state_idx])
+                else:
+                    action = np.random.randint(0, 5)
+                
+                next_state_tuple, reward, done = self.step(action)
+                next_state_idx = self.get_state_index(next_state_tuple)
+
+                if not done:
+                    current_q = self.qtable[state_idx, action]
+                    max_future_q = np.max(self.qtable[next_state_idx])
+                    
+                    new_q = (1 - LEARNING_RATE) * current_q + LEARNING_RATE * (reward + DISCOUNT * max_future_q)
+                    
+                    self.qtable[state_idx, action] = new_q
+                else:
+                    self.qtable[state_idx, action] = reward
+
+                state_idx = next_state_idx
+            
+            if EPSILON > MIN_EPSILON:
+                EPSILON *= EPSILON_DECAY
+            
+            all_final_net_worths.append(self.net_worth)
+
+            print(f"Episode: {episode} | Net Worth: ${self.net_worth:.2f}")
+
+        print("Training Ended")
+        
+        self.max_steps = original_max_steps
+        
+        return all_final_net_worths
 
 
     def test(self, filename="q_table_trading.parquet"):
@@ -600,7 +664,7 @@ class AiTrading():
         while not done:
             action = np.argmax(self.qtable[state_idx])
             
-            if self.current_step % 50 == 0: # Log less frequently
+            if self.current_step % 50 == 0:
                  print(f"Date: {self.current_date.date()} | Action: {action} | Cash: {self.cash:.2f}")
             
             next_state_tuple, reward, done = self.step(action)
@@ -651,25 +715,22 @@ class AiTrading():
 if __name__ == "__main__":    
     env = AiTrading()
     
-    print("\nTraining Phase (2000-2021)")
-    training_curve = env.train_single_episode()
+    print("\nTraining Phase (2000-2021) - Multi Episode")
+    training_results = env.train_multi_episode(episodes=10)
     
     q_table_filename = "q_table_trading.parquet"
     df_qtable = pd.DataFrame(env.qtable, columns=[str(i) for i in range(env.qtable.shape[1])])
     df_qtable.to_parquet(q_table_filename)
-    
     print(f"Q-Table saved to '{q_table_filename}'")
 
     plt.figure(figsize=(12, 6))
-    train_dates = env.index_dataset.index[:len(training_curve)]
-    plt.plot(train_dates, training_curve, label='AI Net Worth', color='blue')
-    plt.title("Training Phase (2000 - 2021)")
-    plt.xlabel("Year")
-    plt.ylabel("Value ($)")
+    plt.plot(training_results, label='Final Net Worth per Episode', color='blue')
+    plt.title("Training (10 Episodes)")
+    plt.xlabel("Episode")
+    plt.ylabel("Final Net Worth ($)")
     plt.grid(True)
     plt.legend()
     plt.show()
-
 
     print("\nTesting Phase (2022-Present)")
     
@@ -690,7 +751,6 @@ if __name__ == "__main__":
         plt.plot(test_dates, test_curve, label='AI Agent', color='green', linewidth=2)
         plt.plot(test_dates, sp500_benchmark, label='S&P 500 (Benchmark)', color='gray', linestyle='--', alpha=0.7)
         
-
         plt.axhline(y=initial_balance, color='red', linestyle=':', linewidth=1, label='Initial Capital')
         
         plt.title("Performance Comparison: AI vs Market")
@@ -703,12 +763,12 @@ if __name__ == "__main__":
         sp500_return = ((sp500_benchmark.iloc[-1] - initial_balance) / initial_balance) * 100
         
         print(f"\nFINAL SUMMARY:")
-        print(f"   AI Return:      {ai_return:.2f}% (${test_curve[-1]:.2f})")
-        print(f"   S&P 500 Return: {sp500_return:.2f}% (${sp500_benchmark.iloc[-1]:.2f})")
+        print(f"AI Return:      {ai_return:.2f}% (${test_curve[-1]:.2f})")
+        print(f"S&P 500 Return: {sp500_return:.2f}% (${sp500_benchmark.iloc[-1]:.2f})")
         
         if ai_return > sp500_return:
-            print("   AI outperformed the market.")
+            print("AI outperformed the market.")
         else:
-            print("   AI underperformed the market.")
+            print("AI underperformed the market.")
 
         plt.show()
