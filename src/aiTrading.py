@@ -14,60 +14,50 @@ from tqdm import trange
 
 class AiTrading():
     """
-    The class to represent the trading environment
-    
-    ...
+    A Q-Learning Reinforcement Learning environment for stock trading simulation.
 
-    Attributes:
-    -----------
+    The State Space is a discrete tuple of 4 components (size 54):
+        1. Cash Ratio (3 states): <10%, 10-50%, >50%.
+        2. Trend (2 states): Price vs SMA_50d.
+        3. Volatility (3 states): Short-term (30d) vs Long-term (365d).
+        4. Performance (3 states): Portfolio vs Index (30d).
+
+    The Action Space consists of 5 discrete actions:
+        0: Hold (Do nothing).
+        1: Buy (25% of available cash).
+        2: Buy (100% of available cash).
+        3: Sell (25% of holdings).
+        4: Sell (100% of holdings).
+
+    Attributes
+    ----------
     qtable : numpy.ndarray
         The Q-Learning table with shape (54, 5) storing Q-values for each state-action pair.
-        
     state : tuple
-        The current state of the environment (Trend, Volatility, Performance, etc.).
-        
+        The current discrete state of the environment (Cash, Trend, Volatility, Performance).
     cash : float
-        The amount of cash currently available in the portfolio.
-        
+        The amount of liquid cash currently available in the portfolio.
     net_worth : float
-        The total value of the portfolio (Cash + Current Value of Holdings).
-        
+        The total value of the portfolio (Cash + Market Value of Holdings).
+    trading_fee : float
+        The transaction fee rate (e.g., 0.01 for 1%).
     start_date : str
-        The start date of the simulation.
-        
+        The start date of the simulation string format 'YYYY-MM-DD'.
     current_date : pandas.Timestamp
         The specific date corresponding to the current step in the simulation.
-        
-    dataset : pandas.DataFrame
-        Dataframe containing the raw historical price data from the parquet file.
-        
-    index_dataset : pandas.DataFrame
-        Dataframe containing the pre-processed S&P 500 index data with calculated metrics.
-
     current_step : int
-        The current time step of the simulation.
-        
+        The current index step of the simulation relative to the dataset.
     max_steps : int
-        The total number of steps available in the simulation data.
-
-    dates_index_array : numpy.ndarray
-        Optimized array containing the dates for the simulation period.
-
-    price_array : numpy.ndarray
-        Optimized array containing the 'Close' prices of the index.
-
-    sma_array : numpy.ndarray
-        Optimized array containing the 50-day Simple Moving Average values.
-
-    std_30d_array : numpy.ndarray
-        Optimized array containing the 30-day rolling standard deviation (volatility).
-
-    perf_30d_array : numpy.ndarray
-        Optimized array containing the 30-day percentage performance of the index.
-
-
-    Methods:
-    --------
+        The total number of accessible steps (days) in the loaded dataset.
+    dataset : pandas.DataFrame
+        Dataframe containing the raw historical price data loaded from the parquet file.
+    index_dataset : pandas.DataFrame
+        Dataframe containing the pre-processed S&P 500 index data with calculated metrics 
+        (SMA, Volatility, Returns).
+    stocks : pandas.DataFrame
+        Inventory of currently held stocks containing 'Quantity' and 'Avg_Price', indexed by Ticker.
+    portfolio_history : list
+        A list storing the net worth of the portfolio at each time step.
 
     """
 
@@ -99,13 +89,10 @@ class AiTrading():
 
     def reset(self):
         """
-        Resets the environment to the initial state to start a new training episode.
-
-        Resets cash to initial capital, clears inventory, resets the time step 
-        to the start of the training data, and calculates the initial state.
+        Resets the environment to the initial state to start from scratch
 
         Returns:
-            tuple: The initial state tuple (Cash, Trend, Volatility, Performance).
+            tuple: The initial state tuple (Cash, Trend, Volatility, Performance)
         """
         self.cash = 10000.0
         self.net_worth = self.cash
@@ -158,7 +145,7 @@ class AiTrading():
 
         The state is defined as a tuple of 4 integers:
         1. Cash: (0: <10%, 1: 10-50%, 2: >50%)
-        2. Trend: Price vs SMA_50d (0: Bearish, 1: Neutral, 2: Bullish)
+        2. Trend: Price vs SMA_50d (0: Under, 1: Neutral, 2: Over)
         3. Volatility: 30d vs 365d (0: Normal, 1: High Risk)
         4. Performance: Portfolio vs Index 30d (0: Under, 1: Neutral, 2: Over)
 
@@ -226,8 +213,13 @@ class AiTrading():
 
     def get_state_index(self, state_tuple):
         """
-        Maps the state tuple (Cash, Trend, Volatility, Perf) to an index 0-53.
-        Formula based on the sizes: Cash(3), Trend(2), Vol(3), Perf(3)
+        Maps the state tuple (Cash, Trend, Volatility, Perf) to an  index (0-53) for the Q-Table
+
+        Parameters:
+            state_tuple : tuple containing the 4 state components
+
+        Returns:
+            int: The index representing the state row in the Q-table
         """
         c, t, v, p = state_tuple
         return (c * 18) + (t * 9) + (v * 3) + p
@@ -235,7 +227,13 @@ class AiTrading():
 
     def buy(self, action):
         """
-        Executes the Buy policy.
+        Executes the Buy policy based on the action received
+
+        Parameters:
+            action : int representing the buy intensity (1 for 25%, 2 for 100%)
+
+        Returns:
+            bool: True if a trade was successfully executed, False if not
         """
         trade_executed = False
 
@@ -300,9 +298,13 @@ class AiTrading():
 
     def sell(self, action):
         """
-        Executes Sell policy:
-        Iteratively sells 100% of the worst performing stocks until 
-        the target amount (25% or 100% of portfolio value) is reached.
+        Executes the Sell policy based on the action received
+
+        Parameters:
+            action : int representing the sell action (3 for 25%, 4 for 100%)
+
+        Returns:
+            bool: True if a trade was successfully executed, false if not
         """
         if self.stocks.empty:
             return False
@@ -357,8 +359,7 @@ class AiTrading():
 
     def get_info_top5(self):
         """
-        Retrieves the data of the top 5 stocks for the current date
-        based on the 'rank_30d' column.
+        Retrieves the data of the top 5 stocks for the current date using preposcessed data
 
         Returns:
             pd.DataFrame: DataFrame containing Ticker, Close, perf_30d, and rank_30d for the top 5.
@@ -373,6 +374,7 @@ class AiTrading():
 
         
     """
+        This is an alt reward, more sofisticated but poorer results
         def calculate_reward(self, prev_net_worth, trade_executed):
         "
         Calculates the reward for the current step based on the defined reward function.
@@ -420,28 +422,31 @@ class AiTrading():
             
         return reward
     """
+
     def calculate_reward(self, prev_net_worth, trade_executed):
-        # 1. Calcular Retorno del Portfolio
+        """
+        Calculates the reward for the current step based on Alpha (Portfolio Return - Indexh Return)
+
+        Parameters:
+            prev_net_worth : float representing the portfolio value at the previous step
+            trade_executed : bool indicating if a trade occurred (applies penalty)
+
+        Returns:
+            float: The calculated reward value
+        """
         current_net_worth = self.net_worth
         if prev_net_worth == 0: 
             r_portfolio = 0
         else:
             r_portfolio = (current_net_worth - prev_net_worth) / prev_net_worth
         
-        # 2. Calcular Retorno del Mercado (Benchmark) hoy
-        # Usamos la columna que ya calculaste en preprocess: 'daily_moving_relative'
-        # Nota: Asegúrate de que daily_moving_relative es el cambio porcentual diario del ^GSPC
-        r_benchmark = self.index_dataset.loc[self.current_date, 'daily_moving_relative']
+        r_index = self.index_dataset.loc[self.current_date, 'daily_moving_relative']
         
-        # 3. EL CAMBIO CLAVE: Alpha (Exceso de retorno)
-        # Si el mercado hace +1% y tú +1.5%, alpha es +0.5% (Premio)
-        # Si el mercado hace -2% y tú -1%, alpha es +1% (Premio por perder menos)
-        alpha = r_portfolio - r_benchmark
+        alpha = r_portfolio - r_index
         
-        # Multiplicamos por 100 para que los números no sean tan pequeños (0.001 -> 0.1)
         reward = alpha * 100 
         
-        # Penalización por comisión (Fricción)
+
         if trade_executed:
             reward -= 0.05
             
@@ -451,8 +456,10 @@ class AiTrading():
 
     def get_current_portfolio_value(self):
         """
-        Calculates the total market value of the stocks held.
-        Optimized for DataFrame operations.
+        Calculates the total market value of the stocks currently held in the portfolio
+
+        Returns:
+            float: The total current value of all stock holdings
         """
         if self.stocks.empty:
             return 0.0
@@ -479,7 +486,7 @@ class AiTrading():
         2. Advance the current_step index.
         3. Update portfolio value based on new market prices.
         4. Calculate the new state and the reward.
-        5. Check if the episode is done (end of data or bankruptcy).
+        5. Check if the episode is done (end of data or netwroth < 1000).
 
         Parameters:
             action : int
@@ -534,10 +541,13 @@ class AiTrading():
             
             return self.state, reward, done
     
+    """
+    This was a test mini training to check all the functionalities were well implemented.
+
     def train_single_episode(self):
-        """
+    
         Executes one episode training
-        """
+        
         train_end_date = pd.Timestamp("2021-12-31")
         
         train_data = self.index_dataset[self.index_dataset.index <= train_end_date]
@@ -590,12 +600,17 @@ class AiTrading():
         print("Training Ended")
         print(self.qtable)
         return self.portfolio_history
-    
+    """
 
     def train_multi_episode(self, episodes=100):
         """
-        Executes training over multiple episodes (2000-2021).
-        Epsilon decays after each episode.
+        Executes training over multiple episodes
+
+        Parameters:
+            episodes : int representing the number of episodes to run
+
+        Returns:
+            list: A list containing the final net worth of each episode
         """
         train_end_date = pd.Timestamp("2021-12-31")
         train_data = self.index_dataset[self.index_dataset.index <= train_end_date]
@@ -658,8 +673,14 @@ class AiTrading():
 
     def test(self, filename="q_table_trading.parquet"):
         """
-        Runs a test simulation using a saved Q-Table (Parquet format).
-        """ 
+        Runs a test simulation on unseen data (2022-Present) using a saved Q-Table
+
+        Parameters:
+            filename : str representing the path to the QTable parquet file
+
+        Returns:
+            list: The portfolio net worth history during the test period
+        """
         try:
             df_qtable = pd.read_parquet(filename)
             self.qtable = df_qtable.values
@@ -742,8 +763,8 @@ class AiTrading():
 
 if __name__ == "__main__":    
     env = AiTrading()
-
-    print("\nTraining Phase (2000-2021) - Multi Episode")
+    """
+    print("\nTraining Phase (2000-2021)")
     training_results = env.train_multi_episode(episodes=100)
     
     q_table_filename = "q_table_trading.parquet"
@@ -759,6 +780,7 @@ if __name__ == "__main__":
     plt.grid(True)
     plt.legend()
     plt.show()
+    """
 
     print("\nTesting Phase (2022-Present)")
     
