@@ -6,28 +6,29 @@ This project implements a Q-learning algorithm for trading strategies.
 
 ```
 AI_project/
-├── data/              # Data files
-├── notebooks/         # Jupyter notebooks
-│   └── trading_qlearning.ipynb
-├── src/               # Source code
-│   ├── environment.py  # Trading environment
-│   ├── qlearning.py    # Q-learning agent
-│   └── utils.py        # Utility functions
-└── README.md
+├── CONTRIBUTING.md
+├── data
+│   ├── constituents.csv
+│   ├── data.py
+│   ├── movers.csv
+│   └── prices_SP500_2000_23122025.parquet
+├── README.md
+└── src
+    ├── aiTrading.py
+    ├── Data_plot.png
+    ├── q_table_trading_only_fullbuying.parquet
+    └── q_table_trading.parquet
 ```
 
 ## Setup
 
 1. Install required dependencies:
 ```bash
-pip install numpy pandas matplotlib jupyter
+pip install numpy pandas matplotlib tqdm
 ```
 
-2. Place your trading data in the `data/` directory.
+2. Run data/data.py
 
-3. Open `notebooks/trading_qlearning.ipynb` to start working.
+3. Run src/aiTrading.py
 
-## Usage
-
-See the main notebook for detailed usage instructions.
 
